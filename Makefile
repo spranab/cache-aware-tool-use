@@ -16,9 +16,12 @@ help:
 
 pdf: $(PAPER_PDF)
 
-$(PAPER_PDF): $(PAPER_MD) $(FIGURES)
+PAPER_HEADER := paper/header.tex
+
+$(PAPER_PDF): $(PAPER_MD) $(PAPER_HEADER) $(FIGURES)
 	pandoc $(PAPER_MD) \
 	  --resource-path=paper \
+	  --include-in-header $(PAPER_HEADER) \
 	  -o $(PAPER_PDF) \
 	  --pdf-engine=xelatex \
 	  -V geometry:margin=1in \
