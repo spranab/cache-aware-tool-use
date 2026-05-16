@@ -25,8 +25,10 @@ $(PAPER_PDF): $(PAPER_MD) $(FIGURES)
 	  -V fontsize=11pt \
 	  -V linkcolor=blue \
 	  -V urlcolor=blue \
-	  -V documentclass=article \
+	  -V documentclass=scrartcl \
+	  -V classoption=DIV=12 \
 	  -V mainfont=Cambria \
+	  -V sansfont=Cambria \
 	  -V monofont="Cascadia Mono" \
 	  --toc --toc-depth=2 \
 	  --standalone

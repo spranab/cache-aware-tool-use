@@ -1,14 +1,19 @@
-# Cache-Aware Tool Use in Multi-Tenant LLM Systems
-
-**A Cost Model, Cross-Provider Measurement, and Architectural Decision Framework**
-
-Pranab Sarkar, Independent Researcher
-ORCID: [0009-0009-8683-1481](https://orcid.org/0009-0009-8683-1481)
-Draft v0.3
-
-Keywords: large language models, tool use, prompt caching, multi-tenant systems, capability delegation, cost models, LLM serving
-
 ---
+title: "Cache-Aware Tool Use in Multi-Tenant LLM Systems"
+subtitle: "A Cost Model, Cross-Provider Measurement, and Architectural Decision Framework"
+author:
+  - "**Pranab Sarkar**"
+  - Independent Researcher
+  - developer@pranab.co.in
+  - "[https://github.com/spranab](https://github.com/spranab)"
+  - "ORCID: [0009-0009-8683-1481](https://orcid.org/0009-0009-8683-1481)"
+date: "Draft v0.3 — 2026-05-16"
+abstract-title: "Abstract"
+---
+
+**Repository:** [https://github.com/spranab/cache-aware-tool-use](https://github.com/spranab/cache-aware-tool-use)
+
+------------------------------------------------------------------------
 
 ## Abstract
 
