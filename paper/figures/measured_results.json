@@ -1,0 +1,106 @@
+{
+  "5": {
+    "A": {
+      "n_calls": 10,
+      "n_users": 5,
+      "hit_rate": 0.49611939740919575,
+      "in_tok": 107071,
+      "out_tok": 777,
+      "cost_input": 0.01600101,
+      "cost_output": 0.0008547,
+      "cost_total": 0.01685571,
+      "cost_per_user_per_1k": 3.371142,
+      "avg_latency": 1.9296667098999023
+    },
+    "D": {
+      "n_calls": 10,
+      "n_users": 5,
+      "hit_rate": 0.9749238340754629,
+      "in_tok": 110942,
+      "out_tok": 1278,
+      "cost_input": 0.00367146,
+      "cost_output": 0.0014058000000000002,
+      "cost_total": 0.00507726,
+      "cost_per_user_per_1k": 1.015452,
+      "avg_latency": 2.9787299156188967
+    }
+  },
+  "10": {
+    "A": {
+      "n_calls": 30,
+      "n_users": 10,
+      "hit_rate": 0.8269609186240566,
+      "in_tok": 321176,
+      "out_tok": 2487,
+      "cost_input": 0.02217672,
+      "cost_output": 0.0027357,
+      "cost_total": 0.02491242,
+      "cost_per_user_per_1k": 2.491242,
+      "avg_latency": 1.6891842285792034
+    },
+    "D": {
+      "n_calls": 30,
+      "n_users": 10,
+      "hit_rate": 0.9867074589097291,
+      "in_tok": 332743,
+      "out_tok": 4262,
+      "cost_input": 0.01005885,
+      "cost_output": 0.004688200000000001,
+      "cost_total": 0.014747050000000001,
+      "cost_per_user_per_1k": 1.4747050000000002,
+      "avg_latency": 2.8000109990437827
+    }
+  },
+  "50": {
+    "A": {
+      "n_calls": 150,
+      "n_users": 50,
+      "hit_rate": 0.727710654313154,
+      "in_tok": 1605913,
+      "out_tok": 12204,
+      "cost_input": 0.14961698999999998,
+      "cost_output": 0.013424400000000001,
+      "cost_total": 0.16304138999999998,
+      "cost_per_user_per_1k": 3.2608277999999995,
+      "avg_latency": 1.6578057702382405
+    },
+    "D": {
+      "n_calls": 150,
+      "n_users": 50,
+      "hit_rate": 0.9832151877126952,
+      "in_tok": 1663766,
+      "out_tok": 20649,
+      "cost_input": 0.051707699999999995,
+      "cost_output": 0.022713900000000002,
+      "cost_total": 0.0744216,
+      "cost_per_user_per_1k": 1.488432,
+      "avg_latency": 7.053957713445028
+    }
+  },
+  "200": {
+    "A": {
+      "n_calls": 600,
+      "n_users": 200,
+      "hit_rate": 0.7442436239658029,
+      "in_tok": 6423703,
+      "out_tok": 48766,
+      "cost_input": 0.57266541,
+      "cost_output": 0.053642600000000006,
+      "cost_total": 0.62630801,
+      "cost_per_user_per_1k": 3.1315400500000004,
+      "avg_latency": 1.6366916084289551
+    },
+    "D": {
+      "n_calls": 600,
+      "n_users": 200,
+      "hit_rate": 0.983764401408091,
+      "in_tok": 6655252,
+      "out_tok": 83283,
+      "cost_input": 0.20594844,
+      "cost_output": 0.0916113,
+      "cost_total": 0.29755974,
+      "cost_per_user_per_1k": 1.4877987000000001,
+      "avg_latency": 24.257020500500996
+    }
+  }
+}

@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.mcp.json
+runs/
+.idea/
+.vscode/
+
+# Secrets — explicit deny-list
+*.pem
+*.key
+*credentials*
+*secret*
+
