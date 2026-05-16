@@ -64,6 +64,14 @@ python paper/figures/plot.py
 
 `runs/*.jsonl` is git-ignored; each invocation appends a fresh log. Figures regenerate deterministically from the most recent logs.
 
+## Building the PDF
+
+```bash
+make pdf
+```
+
+Requires `pandoc` and a LaTeX distribution with `xelatex` (MiKTeX on Windows, TeX Live elsewhere). Renders [paper/PAPER.md](paper/PAPER.md) to `paper/PAPER.pdf` using Cambria + Cascadia Mono. To rebuild figures first, run `make figures` after collecting fresh run logs.
+
 ## Status
 
 This is a pre-registered draft (v0.3). Cross-provider replication (Anthropic, OpenAI, self-hosted vLLM), BFCL accuracy evaluation, and per-tenant tool-overlap sweeps are in progress. Seven falsifiability conditions are listed in [§9 of the paper](paper/PAPER.md#9-threats-to-validity).
