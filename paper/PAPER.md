@@ -168,14 +168,14 @@ We compare six architectures, drawn schematically below. Symbols: `[X]` is a fix
 ### 4.1 Arm A — Naive direct injection
 
 ```
-                    ┌──────────────────────────────────────────────┐
+                    ┌───────────────────────────────────────────────┐
                     │  Reasoning LLM                                │
                     │                                               │
    user query   ──► │  prompt = [persona_i] [stable] [S]  [query]   │ ──► [tool, args]
                     │                                               │
                     │  cacheable: [stable]  (small; persona breaks  │
                     │             prefix at position 0)             │
-                    └──────────────────────────────────────────────┘
+                    └───────────────────────────────────────────────┘
 ```
 
 Cache-miss cost on schema region: ~`K · S`. The pattern emitted by most agent frameworks today.
@@ -183,14 +183,14 @@ Cache-miss cost on schema region: ~`K · S`. The pattern emitted by most agent f
 ### 4.2 Arm A′ — Cache-aware direct injection
 
 ```
-                    ┌──────────────────────────────────────────────┐
+                    ┌───────────────────────────────────────────────┐
                     │  Reasoning LLM                                │
                     │                                               │
    user query   ──► │  prompt = [stable] [S] [persona_i] [query]    │ ──► [tool, args]
                     │                                               │
                     │  cacheable: [stable] [S]  — O(1) cross-tenant │
                     │             iff S is tenant-invariant         │
-                    └──────────────────────────────────────────────┘
+                    └───────────────────────────────────────────────┘
 ```
 
 Reorder the prompt so the stable region (instructions + schemas) precedes tenant-variable content. The schema block now enters the cacheable prefix.
@@ -198,14 +198,14 @@ Reorder the prompt so the stable region (instructions + schemas) precedes tenant
 ### 4.3 Arm A_native — Provider-native tool API
 
 ```
-                    ┌──────────────────────────────────────────────┐
+                    ┌───────────────────────────────────────────────┐
                     │  Reasoning LLM                                │
                     │                                               │
-   user query   ──► │  tools=[ ... ]   (provider-templated position) │ ──► [tool, args]
-                    │  prompt = [persona_i] [query]                  │
+   user query   ──► │  tools=[ ... ]   (provider-templated position)│ ──► [tool, args]
+                    │  prompt = [persona_i] [query]                 │
                     │                                               │
                     │  cacheable: provider-dependent  — see § 5     │
-                    └──────────────────────────────────────────────┘
+                    └───────────────────────────────────────────────┘
 ```
 
 Schemas are submitted through the dedicated `tools=` parameter rather than embedded in the prompt. Whether the resulting internal prefix is cacheable across tenants depends on provider templating, measured per-provider in Section 5.
@@ -216,15 +216,15 @@ Schemas are submitted through the dedicated `tools=` parameter rather than embed
    user query   ──┐
                   │
                   ▼
-              ┌─────────┐
+              ┌──────────┐
               │ Retriever│  (lexical or embedding)
-              └─────────┘
+              └──────────┘
                   │
                   ▼  S_top_m (m ≪ |S|, varies by query)
                   │
                     ┌──────────────────────────────────────────────┐
-                    │  Reasoning LLM                                │
-   user query   ──► │  prompt = [stable] [S_top_m] [persona_i] [Q]  │ ──► [tool, args]
+                    │  Reasoning LLM                               │
+   user query   ──► │  prompt = [stable] [S_top_m] [persona_i] [Q] │ ──► [tool, args]
                     └──────────────────────────────────────────────┘
 ```
 
@@ -234,21 +234,21 @@ Inject only the top-m most relevant schemas. Cache benefit limited because the r
 
 ```
                     ┌──────────────────────────────────────────────┐
-                    │  Reasoner (primary, can be expensive model)   │
-   user query   ──► │  prompt = [stable_primary] [delegate_schema]  │
-                    │           [persona_i] [query]                 │
-                    │  tools=[ delegate(goal: str) ]                │
-                    │  cacheable: [stable_primary][delegate_schema] │
-                    │             — broken by persona but small     │
+                    │  Reasoner (primary, can be expensive model)  │
+   user query   ──► │  prompt = [stable_primary] [delegate_schema] │
+                    │           [persona_i] [query]                │
+                    │  tools=[ delegate(goal: str) ]               │
+                    │  cacheable: [stable_primary][delegate_schema]│
+                    │             — broken by persona but small    │
                     └──────────────────────────────────────────────┘
                                      │
                                      │ delegate(goal)
                                      ▼
                     ┌──────────────────────────────────────────────┐
-                    │  Broker (can be cheaper model)                │
-                    │  prompt = [broker_stable] [S] [goal]          │
-                    │  cacheable: [broker_stable][S]                │
-                    │             — O(1) cross-tenant unconditional │
+                    │  Broker (can be cheaper model)               │
+                    │  prompt = [broker_stable] [S] [goal]         │
+                    │  cacheable: [broker_stable][S]               │
+                    │             — O(1) cross-tenant unconditional│
                     └──────────────────────────────────────────────┘ ──► [tool, args]
 ```
 
