@@ -82,9 +82,9 @@ Let:
 - `P` — personalization token count per tenant (assume uniform).
 - `H` — average conversation-history token count.
 - `Q` — average user-query token count.
-- `α ∈ [0, 1]` — cached-token price multiplier (cache-hit price ÷ cache-miss price).
-- `μ ∈ [0, 1]` — inter-tenant tool-catalog overlap (fraction of schema tokens shared across any two tenants).
-- `q ∈ [0, 1]` — fraction of agent turns requiring a tool call.
+- `α` ∈ [0, 1] — cached-token price multiplier (cache-hit price ÷ cache-miss price).
+- `μ` ∈ [0, 1] — inter-tenant tool-catalog overlap (fraction of schema tokens shared across any two tenants).
+- `q` ∈ [0, 1] — fraction of agent turns requiring a tool call.
 - `c_in`, `c_out` — input and output token prices (uncached input).
 - `o_R`, `o_B` — output tokens emitted by the reasoner and broker respectively in arm D.
 - `τ` — cache TTL.
@@ -127,13 +127,13 @@ miss_schema(D_rag)     = S_top_m · ν                 (broker retrieval reuse f
 1. *The total schema cache-miss cost across K tenants over one cold population satisfies*
 
    ```
-   miss_schema(arch) = |⋃_{t ∈ tenants} (S ∩ Prefix(arch, t))| · K
-                    + |S \ ⋂_{t ∈ tenants} (S ∩ Prefix(arch, t))| · (something tenant-variable)
+   miss_schema(arch) = | Union over t in tenants of (S ∩ Prefix(arch, t)) | · K
+                    + | S \ Intersect over t in tenants of (S ∩ Prefix(arch, t)) | · (tenant-variable term)
    ```
 
    *which reduces to `O(S)` (independent of K) if and only if*
 
-   - `S ⊆ Prefix(arch, t)` for all `t` (schema appears entirely inside the cacheable prefix), and
+   - `S` ⊂ `Prefix(arch, t)` for all `t` (schema appears entirely inside the cacheable prefix), and
    - `Prefix(arch, t) ∩ S` *is identical across all `t`* (schema region is tenant-invariant).
 
 2. *A′ satisfies the precondition iff the schema set `S` is shared across all tenants (μ = 1.0).*
@@ -220,7 +220,7 @@ Schemas are submitted through the dedicated `tools=` parameter rather than embed
               │ Retriever│  (lexical or embedding)
               └──────────┘
                   │
-                  ▼  S_top_m (m ≪ |S|, varies by query)
+                  ▼  S_top_m (m << |S|, varies by query)
                   │
                     ┌──────────────────────────────────────────────┐
                     │  Reasoning LLM                               │
