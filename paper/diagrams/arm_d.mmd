@@ -1,0 +1,32 @@
+flowchart TD
+    UQ(["user query"]):::term
+
+    subgraph RP ["reasoner prompt"]
+      direction LR
+      SP["stable_p"]:::cached
+      DT["delegate"]:::cached
+      RPP["persona_i"]:::var
+      RQ["query"]:::var
+      SP --- DT --- RPP --- RQ
+    end
+
+    UQ --> RP
+    RP --> Reasoner["Reasoner LLM<br/>primary; expensive model"]:::llm
+    Reasoner -. "delegate(goal)" .-> BP
+
+    subgraph BP ["broker prompt"]
+      direction LR
+      SB["broker_stable"]:::cached
+      Sch["schemas S"]:::cached
+      G["goal"]:::var
+      SB --- Sch --- G
+    end
+
+    BP --> Broker["Broker LLM<br/>cheaper model"]:::broker
+    Broker --> Out(["[tool, args]"]):::term
+
+    classDef var fill:#ffe0cc,stroke:#cc7700,color:#000,stroke-width:1px
+    classDef cached fill:#c8e6c8,stroke:#1a8033,color:#000,stroke-width:1.5px
+    classDef llm fill:#dde6f5,stroke:#3355aa,color:#000,stroke-width:1.5px
+    classDef broker fill:#ead4f0,stroke:#7733aa,color:#000,stroke-width:1.5px
+    classDef term fill:#fafafa,stroke:#666,color:#000

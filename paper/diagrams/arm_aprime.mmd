@@ -1,0 +1,20 @@
+flowchart LR
+    UQ(["user query"]):::term
+
+    subgraph Prompt ["prompt sent to LLM"]
+      direction LR
+      S["stable"]:::cached
+      Sch["schemas S"]:::cached
+      P["persona_i"]:::var
+      Q["query"]:::var
+      S --- Sch --- P --- Q
+    end
+
+    UQ --> Prompt
+    Prompt --> LLM["Reasoning LLM"]:::llm
+    LLM --> Out(["[tool, args]"]):::term
+
+    classDef var fill:#ffe0cc,stroke:#cc7700,color:#000,stroke-width:1px
+    classDef cached fill:#c8e6c8,stroke:#1a8033,color:#000,stroke-width:1.5px
+    classDef llm fill:#dde6f5,stroke:#3355aa,color:#000,stroke-width:1.5px
+    classDef term fill:#fafafa,stroke:#666,color:#000
