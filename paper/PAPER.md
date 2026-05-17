@@ -7,7 +7,6 @@ author:
   - developer@pranab.co.in
   - "[https://github.com/spranab](https://github.com/spranab)"
   - "ORCID: [0009-0009-8683-1481](https://orcid.org/0009-0009-8683-1481)"
-date: "Draft v0.3 — 2026-05-16"
 abstract-title: "Abstract"
 ---
 
@@ -23,26 +22,39 @@ Personalized multi-tenant LLM tool use creates avoidable prefix-cache fragmentat
 
 ## 1. Introduction
 
+### 1.1 The setting
+
 Production LLM assistants increasingly serve multi-tenant workloads in which each user receives a personalized prompt prefix — a name, role, tenant identifier, communication-style hint, or recent state summary — followed by a tool catalog of tens to hundreds of function schemas. A naive serialization places personalization first and tool schemas afterward:
 
 ```
 [persona_i]  [stable instructions]  [tool schemas S]  [user query]
 ```
 
-This is the default emitted by most agent frameworks. It is also a cache hazard.
+This is the default emitted by most agent frameworks today, and it is a prefix-cache hazard.
 
-Modern LLM APIs serve requests through prefix-cache layers (Kwon et al. 2023; SGLang; provider-native caches from Anthropic, OpenAI, and DeepSeek). The cache matches the longest common prefix of incoming requests against previously-seen prefixes. Personalization at position 0 invalidates the prefix at position 0, so the tool-schema block — which often dominates request token count — never reaches the cache across users. Each tenant pays the full schema serialization cost on each cold session. The fix appears trivial: reorder the prompt so the stable schema block precedes personalization. We call this cache-aware direct injection (A′). For homogeneous tool catalogs, A′ closes the gap.
+### 1.2 The cache-fragmentation pattern
 
-The fix is not always available. In multi-tenant SaaS systems, **the tool catalog itself is frequently tenant-variable** — different tenants subscribe to different integrations, different users hold different authorization scopes, and per-tenant ACL filtering changes which tool schemas appear in any given prompt. Under per-tenant subsets, A′'s cacheable prefix itself becomes a function of tenant identity, and the cache fragments again.
+Modern LLM APIs serve requests through prefix-cache layers (Kwon et al. 2023; SGLang; provider-native caches from Anthropic, OpenAI, and DeepSeek). The cache matches the *longest common prefix* of incoming requests against previously-seen prefixes. Personalization at position 0 invalidates the prefix at the very first token, so the tool-schema block — which often dominates request token count — never reaches the cache across tenants. Each tenant pays the full schema serialization cost on every cold session.
 
-This paper makes four contributions:
+### 1.3 The first-order fix and its limit
 
-1. **Cost model (Section 3).** A closed-form derivation of schema cache-miss cost as a function of architecture, tenant count, personalization size, and catalog overlap. The dominant asymptotic distinction is O(K·S) for naive serialization versus O(S) for any architecture placing tenant-invariant schemas in the cacheable prefix.
-2. **Architectural analysis (Section 4 and Section 7).** A framework comparing six tool-serialization architectures, with a decision framework mapping deployment conditions to recommended architecture. The architectural contribution is that **goal-delegation with a unified broker catalog plus runtime ACL is the only architecture preserving O(1)-in-tenants cache geometry under heterogeneous catalogs.**
-3. **Empirical validation (Section 6).** Multi-tenant measurements on DeepSeek across K ∈ {5, 10, 50, 200}: delegation holds 98.4% prompt-cache hit rate at every K; naive direct injection plateaus at 74% hit rate; the cost ratio reaches 2.10× total / 2.78× input at K=200, with delegation cost staying constant ($1.49/1k-users) across K while naive cost grows to $3.13/1k-users.
-4. **Cross-provider cache taxonomy (Section 5).** A practical reference for prompt-cache behavior across Anthropic, OpenAI, DeepSeek, and self-hosted vLLM, covering TTL, scoping granularity, discount α, native-tool-API serialization position, and cache-hit observability. Cross-provider replication is in progress; DeepSeek results are reported here and Anthropic/OpenAI/vLLM measurements are the subject of an ongoing replication study.
+The first-order fix is to reorder the prompt so the stable schema block precedes personalization. We call this **cache-aware direct injection** (Arm A′). For homogeneous tool catalogs, A′ closes the gap: schemas enter the cacheable prefix, and one cache entry serves the entire tenant population.
 
-The paper is positioned as the second installment in a substrate-thesis research program initiated by *Skill as Memory, Not Document* (Sarkar 2026). Both papers argue that agent-consumed artifacts — skill bodies in Paper 1, tool schemas here — should be served from substrate (database or shared cache) rather than re-injected per request. The mechanism and the achievable cost reduction differ across artifact constraints; the principle does not.
+The fix is not always available. In multi-tenant SaaS systems the tool catalog itself is frequently tenant-variable — different tenants subscribe to different integrations, different users hold different authorization scopes, and per-tenant ACL filtering changes which schemas appear in any given prompt. Under per-tenant subsets, A′'s cacheable prefix itself becomes a function of tenant identity, and the cache fragments again. **Goal-delegation to a broker holding a unified catalog plus a runtime ACL** recovers $O(1)$-in-tenants cache geometry by moving the tenant-variable component (authorization) out of the cacheable prefix and into the runtime dispatch layer.
+
+### 1.4 Contributions
+
+1. **A formal cost model** parameterized by tenant count $K$, schema size $S$, personalization size $P$, cached-token discount $\alpha$, and per-tenant catalog overlap $\mu$. The dominant asymptotic distinction is $O(K \cdot S)$ for naive serialization versus $O(S)$ for any architecture placing tenant-invariant schemas inside the cacheable prefix (Section 3).
+
+2. **A comparison of six tool-serialization architectures** (naive direct, cache-aware direct, provider-native, top-$m$ retrieval, goal-delegation broker, broker with retrieval) and a decision framework mapping deployment characteristics to recommended architecture. The architectural contribution: under per-tenant catalogs, goal-delegation with a unified broker catalog plus runtime ACL is the only studied architecture preserving $O(1)$ cache geometry (Sections 4 and 7).
+
+3. **Empirical validation** on DeepSeek across $K \in \{5, 10, 50, 200\}$ personalized tenants: delegation maintains a 98.4% prompt-cache hit rate at every $K$; naive direct injection plateaus at 74%; the cost ratio reaches 2.10× total (2.78× input) at $K = 200$ (Section 6).
+
+4. **A cross-provider cache-behavior taxonomy** comparing Anthropic, OpenAI, DeepSeek, and self-hosted vLLM on TTL, scoping granularity, cached-token discount, native-tool-API serialization position, and hit observability. Cross-provider replication is in progress (Section 5).
+
+### 1.5 Positioning
+
+This work is the second installment in a substrate-thesis research program initiated by *Skill as Memory, Not Document* (Sarkar 2026). Both papers argue that agent-consumed artifacts — skill bodies in Paper 1, tool schemas here — should be served from substrate (database or shared cache) rather than re-injected per request. The mechanism and the achievable cost reduction differ across artifact constraints; the underlying principle does not.
 
 ---
 
@@ -170,151 +182,47 @@ Delegation introduces a fixed overhead `c_in · (α·S + Q_goal) + c_out · O_B`
 
 We compare six architectures. Each is rendered as a *prompt strip* (the content the LLM sees, read left-to-right) followed by the LLM(s) that consume it. Color encoding throughout the section:
 
-\begin{tikzpicture}[baseline=0pt]
-  \node[cached, minimum width=2.4cm] (a) {cacheable cross-tenant};
-  \node[dynbox, right=0.3cm of a, minimum width=2.6cm] (b) {tenant- or query-variable};
-  \node[neutral, right=0.3cm of b, minimum width=1.6cm] (c) {provider-templated};
-\end{tikzpicture}
+- **green** — cacheable cross-tenant (block is both tenant-invariant in content *and* placed inside the cacheable prefix)
+- **orange** — tenant- or query-variable (causes cache divergence at its position)
+- **gray** — provider-templated assembly (position-of-schemas determined by the provider, not the application)
 
-A block is shaded green only when it is both tenant-invariant in content *and* placed inside the cacheable prefix. Stable content placed after a variable region is effectively variable for caching purposes and is shaded orange.
+Stable content placed *after* a variable region is effectively variable for caching purposes and is therefore shaded orange.
 
 ### 4.1 Arm A — Naive direct injection
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  \node[dynbox] (p) {persona\_i};
-  \node[dynbox, right=of p] (s) {stable};
-  \node[dynbox, right=of s] (S) {schemas $S$};
-  \node[dynbox, right=of S] (q) {query};
-  \draw[decorate, decoration={brace, mirror, amplitude=4pt}, line width=0.5pt]
-    (p.south west) -- (q.south east)
-    node[midway, below=6pt, bracelabel] {cache divergence begins at position~0 — no cross-tenant reuse};
-  \node[llmbox, below=1.4cm of S, minimum width=4cm] (llm) {Reasoning LLM};
-  \draw[flowarrow] ($(p.south west)!0.5!(q.south east)$) ++(0,-0.55) -- (llm.north);
-  \draw[flowarrow] (llm.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-\end{tikzpicture}
-\caption{Arm A — naive direct injection. Persona at prompt position 0 fragments the prefix cache: even though the schema block is identical across tenants, it is downstream of a tenant-variable region and therefore not reused.}
-\end{figure}
+![Arm A — naive direct injection](diagrams/arm_a.png)
 
-Cache-miss cost on schema region: $\sim K \cdot S$. The pattern emitted by most agent frameworks today.
+Persona at prompt position 0 fragments the prefix cache: even though the schema block is identical across tenants, it is downstream of a tenant-variable region and therefore not reused. Cache-miss cost on schema region: $\sim K \cdot S$. The pattern emitted by most agent frameworks today.
 
 ### 4.2 Arm A′ — Cache-aware direct injection
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  \node[cached] (s) {stable};
-  \node[cached, right=of s] (S) {schemas $S$};
-  \node[dynbox, right=of S] (p) {persona\_i};
-  \node[dynbox, right=of p] (q) {query};
-  \draw[decorate, decoration={brace, amplitude=4pt}, line width=0.5pt, draw=green!50!black]
-    (s.north west) -- (S.north east)
-    node[midway, above=5pt, bracelabel, anchor=south] {cacheable prefix --- one entry shared by all $K$ tenants};
-  \node[llmbox, below=1cm of S, minimum width=4cm] (llm) {Reasoning LLM};
-  \draw[flowarrow] ($(s.south west)!0.5!(q.south east)$) ++(0,-0.2) -- (llm.north);
-  \draw[flowarrow] (llm.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-\end{tikzpicture}
-\caption{Arm A′ — cache-aware direct injection. Stable instructions and schemas precede tenant-variable content, so the schema block enters the cacheable prefix and is reused across all tenants.}
-\end{figure}
+![Arm A′ — cache-aware direct injection](diagrams/arm_aprime.png)
 
-Reorder the prompt so the stable region (instructions + schemas) precedes tenant-variable content. The schema block now enters the cacheable prefix.
+Reorder the prompt so the stable region (instructions + schemas) precedes tenant-variable content. The schema block now enters the cacheable prefix and is reused across all tenants — one cache entry serves the entire tenant population, provided the catalog itself is tenant-invariant.
 
 ### 4.3 Arm A_native — Provider-native tool API
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  \node[neutral, minimum width=2.5cm] (tools) {\texttt{tools=[\,\dots\,]}};
-  \node[dynbox, right=0.4cm of tools] (sys) {system};
-  \node[dynbox, right=of sys] (p) {persona\_i};
-  \node[dynbox, right=of p] (q) {query};
-  \draw[decorate, decoration={brace, amplitude=4pt}, line width=0.5pt, draw=gray!60!black]
-    (tools.north west) -- (q.north east)
-    node[midway, above=5pt, bracelabel, anchor=south] {provider-templated assembly --- position of \texttt{tools=} relative to dynamic content is provider-specific};
-  \node[llmbox, below=1cm of $(tools)!0.5!(q)$, minimum width=4cm] (llm) {Reasoning LLM};
-  \draw[flowarrow] ($(tools.south west)!0.5!(q.south east)$) ++(0,-0.2) -- (llm.north);
-  \draw[flowarrow] (llm.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-\end{tikzpicture}
-\caption{Arm A\textsubscript{native} — provider-native tool API. Schemas are submitted through the dedicated \texttt{tools=} parameter; whether the assembled internal prefix is cacheable cross-tenant depends on each provider's templating order (measured per provider in Section 5).}
-\end{figure}
+![Arm A_native — provider-native tool API](diagrams/arm_anative.png)
+
+Schemas are submitted through the dedicated `tools=` parameter rather than embedded in the prompt body. Whether the assembled internal prefix is cacheable cross-tenant depends on each provider's templating order, which is measured per provider in Section 5.
 
 ### 4.4 Arm B — Top-m schema retrieval
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  \node[retrieverbox, minimum width=3cm] (ret) {Retriever\\\footnotesize lexical or embedding};
-  \node[cached, below=1cm of ret, xshift=-3.5cm, minimum width=1.8cm] (s) {stable};
-  \node[dynbox, right=of s, minimum width=2.6cm] (Stop) {$S_{\text{top-}m}$};
-  \node[dynbox, right=of Stop] (p) {persona\_i};
-  \node[dynbox, right=of p] (q) {query};
-  \draw[flowarrow, dashed] (ret.south) -- ++(0,-0.4) -| (Stop.north);
-  \node[llmbox, below=1.1cm of Stop, minimum width=4cm] (llm) {Reasoning LLM};
-  \draw[flowarrow] ($(s.south west)!0.5!(q.south east)$) ++(0,-0.2) -- (llm.north);
-  \draw[flowarrow] (llm.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-  \node[font=\scriptsize, right=0.2cm of ret] {selects $m \ll |S|$ schemas per query};
-\end{tikzpicture}
-\caption{Arm B — top-$m$ schema retrieval. A retriever picks the $m$ most relevant schemas per query, shrinking the injected schema region. The retrieved subset varies by query, so cache reuse on schemas is limited to repeated near-identical queries.}
-\end{figure}
+![Arm B — top-m schema retrieval](diagrams/arm_b.png)
+
+A retriever (lexical or embedding-based) picks the top-$m$ most relevant schemas per query and injects only those, shrinking the schema region from $|S|$ to $m \ll |S|$ tokens. The retrieved subset varies by query, so cache reuse on the schema region is limited to repeated near-identical queries.
 
 ### 4.5 Arm D — Goal-delegation broker
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  % Reasoner prompt strip
-  \node[cached, minimum width=2.0cm] (sp) {stable\_p};
-  \node[cached, right=of sp, minimum width=1.6cm] (deleg) {\texttt{delegate}};
-  \node[dynbox, right=of deleg] (p) {persona\_i};
-  \node[dynbox, right=of p] (q) {query};
-  \node[llmbox, below=1cm of $(sp)!0.5!(q)$, minimum width=5cm] (reasoner) {Reasoner LLM\\\footnotesize primary, expensive model};
-  \draw[flowarrow] ($(sp.south west)!0.5!(q.south east)$) ++(0,-0.2) -- (reasoner.north);
-  % Delegation edge
-  \node[font=\small\ttfamily, right=0.5cm of reasoner] (delcall) {delegate(goal)};
-  \draw[flowarrow] (reasoner.east) -- (delcall.west);
-  % Broker prompt strip
-  \node[cached, below=1.8cm of sp, minimum width=2.0cm] (sb) {broker\_stable};
-  \node[cached, right=of sb] (S) {schemas $S$};
-  \node[dynbox, right=of S] (g) {goal};
-  \node[brokerbox, below=1cm of $(sb)!0.5!(g)$, minimum width=5cm] (broker) {Broker LLM\\\footnotesize cheaper model};
-  \draw[flowarrow] ($(sb.south west)!0.5!(g.south east)$) ++(0,-0.2) -- (broker.north);
-  \draw[flowarrow, dashed] (delcall.south) |- ($(sb.north west)!0.5!(g.north east)$) -- ++(0,0.0);
-  % Broker output
-  \draw[flowarrow] (broker.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-  % Cacheable annotation on broker
-  \draw[decorate, decoration={brace, amplitude=4pt}, line width=0.5pt, draw=green!50!black]
-    (sb.north west) -- (S.north east)
-    node[midway, above=5pt, bracelabel, anchor=south] {one cache entry --- shared by all tenants and all goals};
-\end{tikzpicture}
-\caption{Arm D — goal-delegation broker. The reasoner sees only the small \texttt{delegate} tool; the broker holds the full schema set behind a tenant-invariant prefix. Schema injection cost is paid once globally instead of once per tenant.}
-\end{figure}
+![Arm D — goal-delegation broker](diagrams/arm_d.png)
+
+The reasoner sees only the small `delegate` tool; the broker holds the full schema set behind a tenant-invariant prefix. Schema injection cost is paid once globally — one cache entry shared by all tenants and all goals — instead of once per tenant.
 
 ### 4.6 Arm D_rag — Delegation with broker-side retrieval
 
-\begin{figure}[!ht]
-\centering
-\begin{tikzpicture}[node distance=0.06cm]
-  \node[cached, minimum width=2.0cm] (sp) {stable\_p};
-  \node[cached, right=of sp, minimum width=1.6cm] (deleg) {\texttt{delegate}};
-  \node[dynbox, right=of deleg] (p) {persona\_i};
-  \node[dynbox, right=of p] (q) {query};
-  \node[llmbox, below=0.9cm of $(sp)!0.5!(q)$, minimum width=5cm] (reasoner) {Reasoner LLM};
-  \draw[flowarrow] ($(sp.south west)!0.5!(q.south east)$) ++(0,-0.2) -- (reasoner.north);
-  \node[retrieverbox, below=0.7cm of reasoner, minimum width=3cm] (ret) {Broker retriever};
-  \draw[flowarrow] (reasoner.south) -- (ret.north) node[midway, right, font=\scriptsize\ttfamily] {goal};
-  \node[cached, below left=1.2cm and -2cm of ret, minimum width=2cm] (sb) {broker\_stable};
-  \node[dynbox, right=of sb, minimum width=2.2cm] (Stop) {$S_{\text{top-}m}$};
-  \node[dynbox, right=of Stop] (g) {goal};
-  \draw[flowarrow, dashed] (ret.south) -- ($(sb.north east)!0.5!(Stop.north west)$);
-  \node[brokerbox, below=0.9cm of $(sb)!0.5!(g)$, minimum width=5cm] (broker) {Broker LLM};
-  \draw[flowarrow] ($(sb.south west)!0.5!(g.south east)$) ++(0,-0.2) -- (broker.north);
-  \draw[flowarrow] (broker.east) -- ++(1.2,0) node[right, font=\small\ttfamily] {[tool, args]};
-\end{tikzpicture}
-\caption{Arm D\textsubscript{rag} --- delegation with broker-side retrieval. Same shape as Arm D, but the broker performs retrieval internally before constructing the tool call. Useful when the global catalog is large enough that even a cached schema block burdens broker latency.}
-\end{figure}
+![Arm D_rag — delegation with broker-side retrieval](diagrams/arm_drag.png)
 
-Cache reuse on the broker side becomes query-dependent, in the same way as Arm B's caching behavior.
+Same shape as Arm D, but the broker performs retrieval internally before constructing the tool call. Useful when the global catalog is large enough that even a cached schema block burdens broker latency. Cache reuse on the broker side becomes query-dependent, in the same way as Arm B's caching behavior.
 
 ---
 
