@@ -115,15 +115,15 @@ Let:
 
 The six architectures evaluated in this paper differ in the order and locus of their cacheable content. Section 4 describes each in detail; we summarize the prefix structure here:
 
-| Arm | Cacheable prefix | Tenant-variable region |
-|-----|------------------|------------------------|
-| A — naive direct | `[stable]` (small) | `[persona][S][query]` |
-| A′ — cache-aware direct | `[stable][S]` | `[persona][query]` |
-| A_native — provider-native | provider-dependent | provider-dependent |
-| B — top-m retrieval | `[stable]` | `[S_top_m,query][persona][query]` |
-| D-reasoner — delegation primary | `[stable_primary][delegate_schema]` | `[persona][query]` |
-| D-broker — delegation broker | `[broker_stable][S]` | `[goal_from_reasoner]` |
-| D_rag-broker — broker with retrieval | `[broker_stable]` | `[S_top_m,goal][goal]` |
+| Arm                    | Cacheable prefix                          | Tenant-variable region            |
+|:-----------------------|:------------------------------------------|:----------------------------------|
+| A (naive direct)       | `[stable]` (small)                        | `[persona][S][query]`             |
+| A′ (cache-aware)       | `[stable][S]`                             | `[persona][query]`                |
+| A_native               | provider-dependent                        | provider-dependent                |
+| B (top-m retrieval)    | `[stable]`                                | `[S_top_m][persona][query]`       |
+| D — reasoner side      | `[stable_p][delegate]`                    | `[persona][query]`                |
+| D — broker side        | `[broker_stable][S]`                      | `[goal]`                          |
+| D_rag — broker side    | `[broker_stable]`                         | `[S_top_m][goal]`                 |
 
 ### 3.3 Cache-miss cost under each architecture
 
@@ -232,15 +232,15 @@ Same shape as Arm D, but the broker performs retrieval internally before constru
 
 We compare four serving stacks across cache properties relevant to tool serialization. **Status: DeepSeek is empirically measured in this paper; Anthropic, OpenAI, and self-hosted vLLM are subjects of an ongoing replication study, with values below drawn from provider documentation and pending empirical confirmation.**
 
-| Property | Anthropic Claude | OpenAI | DeepSeek | vLLM (self-hosted) |
-|----------|------------------|--------|----------|---------------------|
-| Cache control | Explicit `cache_control` markers | Automatic, prompts ≥ 1024 tokens | Automatic, 64-token granularity | Automatic, configurable via `--enable-prefix-caching` |
-| Default TTL | 5 minutes (extended ≥ 1 h) | ~5–10 minutes during off-peak | Multi-hour | Configurable; effectively limited by GPU memory |
-| Cache scope | Per-organization | Per-organization / per-project | Per-API-key (per-account) | Per-serving-instance |
-| Hit discount α | ~0.1 (10% of input) | ~0.5 (50% of input)¹ | ~0.1 (10% of input) | 0 (free) |
-| Hit observability | `cache_read_input_tokens`, `cache_creation_input_tokens` | `prompt_tokens_details.cached_tokens` | `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens` | Server logs only |
-| Native `tools=` position | After system, before messages² | After system, before messages² | After system, before messages² | Templated by chat-template |
-| Cacheable native tools | Yes if covered by `cache_control` | Yes if prefix ≥ 1024 tokens | Yes (auto) | Yes (auto) |
+| Property              | Anthropic                 | OpenAI                          | DeepSeek                  | vLLM                       |
+|:----------------------|:--------------------------|:--------------------------------|:--------------------------|:---------------------------|
+| Cache control         | Explicit `cache_control`  | Auto, prompts ≥ 1024 tok        | Auto, 64-tok granularity  | Auto (`--enable-prefix-caching`) |
+| Default TTL           | 5 min (extended ≥ 1 h)    | ~5–10 min off-peak              | Multi-hour                | GPU-memory limited         |
+| Cache scope           | Per-org                   | Per-org / per-project           | Per-API-key               | Per-serving-instance       |
+| Hit discount α        | ~0.1                      | ~0.5¹                           | ~0.1                      | 0 (free)                   |
+| Hit observability     | `cache_read_input_tokens` | `prompt_tokens_details.cached_tokens` | `prompt_cache_hit_tokens` | Server logs only           |
+| `tools=` position     | after system, before msgs² | after system, before msgs²     | after system, before msgs² | chat-template templated    |
+| Cacheable native tools| Yes if `cache_control`    | Yes if prefix ≥ 1024 tok        | Yes (auto)                | Yes (auto)                 |
 
 ¹ OpenAI cached-input pricing is announced as 50% of uncached input at the time of writing; this value is subject to change and is part of the replication study.
 ² Native-tool templating position is empirically observable via cache-hit token counts when only the tool block changes; pending confirmation.
