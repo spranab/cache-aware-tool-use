@@ -1,6 +1,6 @@
 ---
-title: "Cache-Aware Tool Use in Multi-Tenant LLM Systems"
-subtitle: "A Cost Model, Cross-Provider Measurement, and Architectural Decision Framework"
+title: "Do LLM Agents Need Tool Schemas in Every Session?"
+subtitle: "Cache-Aware Tool Use in Multi-Tenant LLM Systems — A Cost Model, Preliminary Measurement, and Architectural Decision Framework"
 author:
   - "**Pranab Sarkar**"
   - Independent Researcher
@@ -16,7 +16,11 @@ abstract-title: "Abstract"
 
 ## Abstract
 
-Personalized multi-tenant LLM tool use creates avoidable prefix-cache fragmentation when tenant-specific context precedes large stable tool schemas. We formalize this fragmentation pattern, derive a closed-form cost model parameterized by tenant count K, schema size S, personalization size P, cached-token discount α, tool-use rate q, and per-tenant catalog overlap μ, and empirically compare six tool-serialization architectures: naive direct injection (A), cache-aware direct injection (A′), provider-native tool APIs (A_native), top-m schema retrieval (B), goal-delegation broker (D), and broker with internal retrieval (D_rag). Preliminary measurements on DeepSeek with K ∈ {5, 10, 50, 200} personalized tenants over 200 tools and 3 sequential calls per tenant show that delegation maintains a 98.4% prompt-cache hit rate independent of K, while naive direct injection plateaus at 74% hit rate and incurs a 2.10× higher total cost at K=200. We further argue, via the cost model, that under per-tenant tool subsets — the common real-world case in multi-tenant SaaS — cache-aware direct injection cannot preserve O(1) cache geometry in tenant count, while goal-delegation with a unified broker catalog plus runtime ACL can. We provide a cross-provider cache-behavior taxonomy comparing Anthropic, OpenAI, DeepSeek, and self-hosted vLLM, and a decision framework mapping deployment characteristics to recommended architecture. Seven falsifiability conditions are pre-registered. This work extends the substrate-thesis introduced in *Skill as Memory, Not Document* (Sarkar 2026), applying the principle from skills (database-resident) to tool schemas (cache-resident or broker-resident).
+Multi-tenant LLM applications often prepend user- or tenant-specific context before large tool schemas. Under longest-prefix prompt caching — the dominant cache discipline in modern LLM serving — this ordering fragments cache reuse: the schema block may be byte-identical across tenants but still fails to share cache entries because divergence occurs before the schema begins. We study **tool serialization as a cache-economics problem**: how prompt-construction choices determine whether large schema blocks amortize across tenants or are repeatedly billed.
+
+We define six tool-serialization architectures — naive direct injection (A), cache-aware direct injection (A′), provider-native tool APIs (A_native), top-m schema retrieval (B), goal-delegation broker (D), and broker with internal retrieval (D_rag) — and provide preliminary measurements for three of them (A, B, D) on DeepSeek across K ∈ {5, 10, 50, 200} personalized tenants over 200 tools and 3 sequential calls per tenant. Delegation maintains a 98.4% prompt-cache hit rate independent of K; naive direct injection plateaus at 74% and incurs a 2.10× higher total cost at K=200. We further derive a closed-form cost model parameterized by tenant count K, schema size S, personalization size P, cached-token discount α, tool-use rate q, and per-tenant catalog overlap μ, and prove a cache-geometry theorem characterizing when schema-region miss cost is Θ(S) versus Θ(K·S). Under per-tenant tool subsets — the prevailing real-world case in multi-tenant SaaS — cache-aware direct injection cannot preserve Θ(S) cache geometry in tenant count, while goal-delegation with a unified broker catalog plus runtime ACL can.
+
+The paper also contributes a cross-provider cache-behavior evaluation framework comparing Anthropic, OpenAI, DeepSeek, and self-hosted vLLM, and a decision framework mapping deployment characteristics to recommended architecture. Seven falsifiability conditions are pre-registered. This work extends the substrate-thesis introduced in *Skill as Memory, Not Document* (Sarkar 2026), applying the principle from skills (database-resident) to tool schemas (cache-resident or broker-resident). The present report is preliminary; cross-provider replication, BFCL accuracy evaluation, and per-tenant subset sweeps are in progress.
 
 ---
 
@@ -30,7 +34,7 @@ Production LLM assistants increasingly serve multi-tenant workloads in which eac
 [persona_i]  [stable instructions]  [tool schemas S]  [user query]
 ```
 
-This is the default emitted by most agent frameworks today, and it is a prefix-cache hazard.
+This is the default emitted by most agent frameworks today, and it is a prefix-cache hazard. We study tool serialization as a cache-economics problem rather than purely as an accuracy or routing problem: prompt-construction choices determine whether a large stable schema block is amortized across tenants or repeatedly billed.
 
 ### 1.2 The cache-fragmentation pattern
 
@@ -50,7 +54,7 @@ The fix is not always available. In multi-tenant SaaS systems the tool catalog i
 
 3. **Empirical validation** on DeepSeek across $K \in \{5, 10, 50, 200\}$ personalized tenants: delegation maintains a 98.4% prompt-cache hit rate at every $K$; naive direct injection plateaus at 74%; the cost ratio reaches 2.10× total (2.78× input) at $K = 200$ (Section 6).
 
-4. **A cross-provider cache-behavior taxonomy** comparing Anthropic, OpenAI, DeepSeek, and self-hosted vLLM on TTL, scoping granularity, cached-token discount, native-tool-API serialization position, and hit observability. Cross-provider replication is in progress (Section 5).
+4. **A cross-provider cache-behavior evaluation framework** comparing Anthropic, OpenAI, DeepSeek, and self-hosted vLLM on TTL, scoping granularity, cached-token discount, native-tool-API serialization position, and hit observability. DeepSeek values are empirically measured; the other three serving stacks are the subject of an ongoing replication study (Section 5).
 
 ### 1.5 Positioning
 
@@ -138,30 +142,28 @@ miss_schema(D_rag)     = S_top_m · ν                 (broker retrieval reuse f
 
 ### 3.4 Theorem
 
-**Theorem 1 (Cache geometry under prefix-cache serving).**
-*Let `Prefix(arch, t)` denote the cacheable prefix produced by architecture `arch` for tenant `t`. Let `|·|` denote token count. Under prefix-cache serving with hit-discount α < 1:*
+**Theorem 1 (Cache geometry under longest-prefix caching).**
+*Under a longest-prefix cache with hit discount $\alpha \in [0, 1)$, the schema tokens of architecture `arch` are shared across all tenants in a single cache entry if and only if*
 
-1. *The total schema cache-miss cost across K tenants over one cold population satisfies*
+1. *the schema block appears within the cacheable prefix produced by `arch` for every tenant, **and***
+2. *the schema region is byte-identical across tenants.*
 
-   ```
-   miss_schema(arch) = | Union over t in tenants of (S ∩ Prefix(arch, t)) | · K
-                    + | S \ Intersect over t in tenants of (S ∩ Prefix(arch, t)) | · (tenant-variable term)
-   ```
+*As a consequence, the asymptotic schema cache-miss cost across K tenants is:*
 
-   *which reduces to `O(S)` (independent of K) if and only if*
+```
+miss_schema(A)                  =  Θ(K · S)
+miss_schema(A′)   with μ = 1.0  =  Θ(S)
+miss_schema(A′)   with μ < 1.0  =  Θ(S + K · (1 − μ) · S)
+miss_schema(D)                  =  Θ(S) + broker-call overhead
+```
 
-   - `S` ⊂ `Prefix(arch, t)` for all `t` (schema appears entirely inside the cacheable prefix), and
-   - `Prefix(arch, t) ∩ S` *is identical across all `t`* (schema region is tenant-invariant).
+*A′ satisfies the precondition iff the schema set $S$ is shared across all tenants ($\mu = 1$). D satisfies the precondition unconditionally, provided the broker prompt does not include tenant identifiers in its cacheable prefix.*
 
-2. *A′ satisfies the precondition iff the schema set `S` is shared across all tenants (μ = 1.0).*
+*Corollary: under per-tenant tool subsets ($\mu < 1$), A′ degrades smoothly toward the A regime; D remains $\Theta(S)$.*
 
-3. *D satisfies the precondition unconditionally, provided the broker prompt does not include tenant identifiers in its cacheable prefix.*
+*Proof sketch.* A longest-prefix cache treats two requests as cache-equivalent up to the first byte of divergence between their prefixes. Schema tokens are therefore shared across tenants iff they appear within that common-prefix region and are byte-identical across the tenants that share the cache entry. A′ places schemas in the cacheable prefix structurally; tenant-invariance holds only when the catalog is shared. D structurally satisfies both conditions because the broker prompt has no tenant context and the catalog is the unified one regardless of dispatching tenant.
 
-*Corollary: under per-tenant tool subsets (μ < 1), A′ degrades smoothly toward the A regime; D remains O(1).*
-
-*Proof sketch.* Standard prefix-matching argument. The prefix-cache treats two requests as cache-equivalent up to the first byte of divergence. Schema tokens must therefore appear (i) within the cacheable prefix and (ii) at the same content for all tenants for whom a shared cache entry exists. A′ places schemas in the cacheable prefix structurally; it satisfies tenant-invariance only when the schema set is itself tenant-invariant. D structurally satisfies both conditions: the broker has no tenant context in its system prompt, and the schema set is the unified catalog regardless of which tenant dispatched the goal.
-
-The theorem and its corollary are theoretical statements about cache geometry independent of any specific provider's pricing or eviction policy. Sections 5 and 6 measure how closely real provider behavior approximates the theoretical ideal.
+The theorem characterizes cache geometry independent of any specific provider's pricing or eviction policy. Sections 5 and 6 measure how closely real provider behavior approximates the theoretical ideal.
 
 ### 3.5 Per-request cost expressions
 
